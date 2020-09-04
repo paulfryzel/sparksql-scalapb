@@ -4,7 +4,9 @@ import com.google.protobuf.ByteString
 import org.apache.spark.sql.catalyst.analysis.{UnresolvedAttribute, UnresolvedExtractValue}
 import org.apache.spark.sql.catalyst.expressions
 import org.apache.spark.sql.catalyst.expressions.objects.{
+  CatalystToExternalMap,
   Invoke,
+  LambdaVariable,
   MapObjects,
   NewInstance,
   StaticInvoke
@@ -15,14 +17,13 @@ import org.apache.spark.sql.catalyst.expressions.{
   Expression,
   If,
   IsNull,
-  Literal
+  Literal,
+  UnaryExpression,
+  Unevaluable
 }
-import org.apache.spark.sql.types.ObjectType
+import org.apache.spark.sql.types.{DataType, MapType, ObjectType}
 import scalapb.GeneratedMessageCompanion
 import scalapb.descriptors._
-import org.apache.spark.sql.catalyst.expressions.objects.CatalystToExternalMap
-import org.apache.spark.sql.types.MapType
-import org.apache.spark.sql.catalyst.expressions.objects.LambdaVariable
 
 trait FromCatalystHelpers {
   def protoSql: ProtoSQL
@@ -72,13 +73,14 @@ trait FromCatalystHelpers {
       val mapEntryCmp = cmp.messageCompanionForFieldNumber(fd.number)
       val keyDesc = mapEntryCmp.scalaDescriptor.findFieldByNumber(1).get
       val valDesc = mapEntryCmp.scalaDescriptor.findFieldByNumber(2).get
-      val objs = MyCatalystToExternalMap(
+      val urobjs = MyUnresolvedCatalystToExternalMap(
+        input,
         (in: Expression) => singleFieldValueFromCatalyst(mapEntryCmp, keyDesc, in),
         (in: Expression) => singleFieldValueFromCatalyst(mapEntryCmp, valDesc, in),
-        input,
         ProtoSQL.dataTypeFor(fd).asInstanceOf[MapType],
         classOf[Vector[(Any, Any)]]
       )
+      val objs = MyCatalystToExternalMap(urobjs)
       StaticInvoke(
         JavaHelpers.getClass,
         ObjectType(classOf[PValue]),
@@ -161,43 +163,28 @@ trait FromCatalystHelpers {
   }
 }
 
-object MyCatalystToExternalMap {
-  private val curId = new java.util.concurrent.atomic.AtomicInteger()
+case class MyUnresolvedCatalystToExternalMap(
+  child: Expression,
+  @transient keyFunction: Expression => Expression,
+  @transient valueFunction: Expression => Expression,
+  mapType: MapType,
+  collClass: Class[_]) extends UnaryExpression with Unevaluable {
 
-  /**
-    * Construct an instance of CatalystToExternalMap case class.
-    *
-    * @param keyFunction The function applied on the key collection elements.
-    * @param valueFunction The function applied on the value collection elements.
-    * @param inputData An expression that when evaluated returns a map object.
-    * @param mapType,
-    * @param collClass The type of the resulting collection.
-    */
-  def apply(
-      keyFunction: Expression => Expression,
-      valueFunction: Expression => Expression,
-      inputData: Expression,
-      mapType: MapType,
-      collClass: Class[_]
-  ): CatalystToExternalMap = {
-    val id = curId.getAndIncrement()
-    val keyLoopValue = s"CatalystToExternalMap_keyLoopValue$id"
-    val keyLoopVar = LambdaVariable(keyLoopValue, "", mapType.keyType, nullable = false)
-    val valueLoopValue = s"CatalystToExternalMap_valueLoopValue$id"
-    val valueLoopIsNull = if (mapType.valueContainsNull) {
-      s"CatalystToExternalMap_valueLoopIsNull$id"
-    } else {
-      "false"
-    }
-    val valueLoopVar = LambdaVariable(valueLoopValue, valueLoopIsNull, mapType.valueType)
+  override lazy val resolved = false
+
+  override def dataType: DataType = ObjectType(collClass)
+}
+
+object MyCatalystToExternalMap {
+  def apply(u: MyUnresolvedCatalystToExternalMap): CatalystToExternalMap = {
+    val mapType = u.mapType
+    val keyLoopVar = LambdaVariable(
+      "CatalystToExternalMap_key", mapType.keyType, nullable = false)
+    val valueLoopVar = LambdaVariable(
+      "CatalystToExternalMap_value", mapType.valueType, mapType.valueContainsNull)
     CatalystToExternalMap(
-      keyLoopValue,
-      keyFunction(keyLoopVar),
-      valueLoopValue,
-      valueLoopIsNull,
-      valueFunction(valueLoopVar),
-      inputData,
-      collClass
-    )
+      keyLoopVar, u.keyFunction(keyLoopVar),
+      valueLoopVar, u.valueFunction(valueLoopVar),
+      u.child, u.collClass)
   }
 }

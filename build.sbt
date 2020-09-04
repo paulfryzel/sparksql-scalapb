@@ -15,11 +15,12 @@ lazy val sparkSqlScalaPB = project
     name := "sparksql-scalapb",
     crossScalaVersions := Seq(Scala212),
     libraryDependencies ++= Seq(
-      "org.typelevel" %% "frameless-dataset" % "0.8.0",
+      "org.typelevel" %% "frameless-dataset" % "0.9.0" from "file:///Users/paul/Documents/GitHub/frameless/dataset/target/scala-2.12/frameless-dataset_2.12-0.9.0-SNAPSHOT.jar",
+      "org.typelevel" %% "frameless-core" % "0.9.0" from "file:///Users/paul/Documents/GitHub/frameless/core/target/scala-2.12/frameless-core_2.12-0.9.0-SNAPSHOT.jar",
       "com.thesamet.scalapb" %% "scalapb-runtime" % scalapbVersion,
       "com.thesamet.scalapb" %% "scalapb-runtime" % scalapbVersion % "protobuf",
-      "org.apache.spark" %% "spark-sql" % "2.4.6" % "provided",
-      "org.apache.spark" %% "spark-sql" % "2.4.6" % "test",
+      "org.apache.spark" %% "spark-sql" % "3.0.0" % "provided",
+      "org.apache.spark" %% "spark-sql" % "3.0.0" % "test",
       "org.scalatest" %% "scalatest" % "3.2.2" % "test",
       "org.scalatestplus" %% "scalacheck-1-14" % "3.2.2.0" % "test",
       "com.github.alexarchambault" %% "scalacheck-shapeless_1.14" % "1.2.5" % "test"
