@@ -1,26 +1,10 @@
 package scalapb.spark
 
 import com.google.protobuf.ByteString
-import org.apache.spark.sql.catalyst.analysis.{UnresolvedAttribute, UnresolvedExtractValue}
+import org.apache.spark.sql.catalyst.analysis.{GetColumnByOrdinal, UnresolvedAttribute, UnresolvedExtractValue}
 import org.apache.spark.sql.catalyst.expressions
-import org.apache.spark.sql.catalyst.expressions.objects.{
-  CatalystToExternalMap,
-  Invoke,
-  LambdaVariable,
-  MapObjects,
-  NewInstance,
-  StaticInvoke
-}
-import org.apache.spark.sql.catalyst.expressions.{
-  BoundReference,
-  CreateArray,
-  Expression,
-  If,
-  IsNull,
-  Literal,
-  UnaryExpression,
-  Unevaluable
-}
+import org.apache.spark.sql.catalyst.expressions.objects.{CatalystToExternalMap, Invoke, LambdaVariable, MapObjects, NewInstance, StaticInvoke}
+import org.apache.spark.sql.catalyst.expressions.{BoundReference, CreateArray, Expression, GetStructField, If, IsNull, Literal, UnaryExpression, Unevaluable}
 import org.apache.spark.sql.types.{DataType, MapType, ObjectType}
 import scalapb.GeneratedMessageCompanion
 import scalapb.descriptors._
@@ -41,8 +25,7 @@ trait FromCatalystHelpers {
         }
       else
         cmp.scalaDescriptor.fields.map { fd =>
-          val newPath = addToPath(input, schemaOptions.columnNaming.fieldName(fd))
-          fieldFromCatalyst(cmp, fd, newPath)
+          fieldFromCatalyst(cmp, fd, GetStructField(input, fd.index, Some(fd.name)))
         }
     StaticInvoke(
       JavaHelpers.getClass,
@@ -150,16 +133,6 @@ trait FromCatalystHelpers {
           ObjectType(classOf[PValue])
         )
     }
-  }
-
-  def addToPath(path: Expression, name: String): Expression = {
-    val res = path match {
-      case _: BoundReference =>
-        UnresolvedAttribute.quoted(name)
-      case _ =>
-        UnresolvedExtractValue(path, expressions.Literal(name))
-    }
-    res
   }
 }
 
